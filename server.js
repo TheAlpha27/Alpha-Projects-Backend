@@ -60,7 +60,10 @@ app.post("/getUpdatedUser", async (req, res) => {
           if (results[0].status == "Inactive") {
             res.status(200).json({ error: true, message: "User is inactive" });
           } else {
-            res.status(200).json({ error: false, results });
+            const token = jwt.sign({ email }, jwtSecret, {
+              expiresIn: "1h",
+            });
+            res.status(200).json({ error: false, results, token });
           }
         } else {
           res.status(200).json({ error: true, message: "User not found" });
@@ -103,6 +106,45 @@ app.post("/addProject", async (req, res) => {
   } = req.body;
   let lat;
   let lon;
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized - No token provided" });
+  }
+  jwt.verify(token, jwtSecret, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+    }
+    const email = decoded.email;
+    let query = `Select type, status From users where email = (?)`;
+    try {
+      connection.query(query, [email], (error, results) => {
+        if (error) {
+          console.error("Database error:", error);
+          res.status(500).json({ message: "Internal server error" });
+        } else {
+          if (results.length > 0) {
+            if (results[0].status == "Inactive") {
+              return res
+                .status(200)
+                .json({ error: true, message: "User is inactive" });
+            }
+            if (results[0].type == "Guest") {
+              return res
+                .status(200)
+                .json({ error: true, message: "Action not allowed" });
+            }
+          } else {
+            return res
+              .status(200)
+              .json({ error: true, message: "User not found" });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Database error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   try {
     const response = await axios.get(
       `https://nominatim.openstreetmap.org/search?city=${city}&country=${country}&format=json`
@@ -246,6 +288,45 @@ app.post("/signup", async (req, res) => {
 });
 
 app.delete("/delete-users", (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized - No token provided" });
+  }
+  jwt.verify(token, jwtSecret, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+    }
+    const email = decoded.email;
+    let query = `Select type, status From users where email = (?)`;
+    try {
+      connection.query(query, [email], (error, results) => {
+        if (error) {
+          console.error("Database error:", error);
+          res.status(500).json({ message: "Internal server error" });
+        } else {
+          if (results.length > 0) {
+            if (results[0].status == "Inactive") {
+              return res
+                .status(200)
+                .json({ error: true, message: "User is inactive" });
+            }
+            if (results[0].type != "Admin") {
+              return res
+                .status(200)
+                .json({ error: true, message: "Action not allowed" });
+            }
+          } else {
+            return res
+              .status(200)
+              .json({ error: true, message: "User not found" });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Database error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   try {
     const emails = req.body.userEmail;
     connection.query(
@@ -266,6 +347,45 @@ app.delete("/delete-users", (req, res) => {
 });
 
 app.put("/change-user-type", (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized - No token provided" });
+  }
+  jwt.verify(token, jwtSecret, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+    }
+    const email = decoded.email;
+    let query = `Select type, status From users where email = (?)`;
+    try {
+      connection.query(query, [email], (error, results) => {
+        if (error) {
+          console.error("Database error:", error);
+          res.status(500).json({ message: "Internal server error" });
+        } else {
+          if (results.length > 0) {
+            if (results[0].status == "Inactive") {
+              return res
+                .status(200)
+                .json({ error: true, message: "User is inactive" });
+            }
+            if (results[0].type != "Admin") {
+              return res
+                .status(200)
+                .json({ error: true, message: "Action not allowed" });
+            }
+          } else {
+            return res
+              .status(200)
+              .json({ error: true, message: "User not found" });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Database error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   try {
     const userUpdates = req.body.userUpdates;
     for (const update of userUpdates) {
@@ -303,6 +423,45 @@ app.put("/change-user-type", (req, res) => {
 });
 
 app.put("/change-user-status", (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized - No token provided" });
+  }
+  jwt.verify(token, jwtSecret, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+    }
+    const email = decoded.email;
+    let query = `Select type, status From users where email = (?)`;
+    try {
+      connection.query(query, [email], (error, results) => {
+        if (error) {
+          console.error("Database error:", error);
+          res.status(500).json({ message: "Internal server error" });
+        } else {
+          if (results.length > 0) {
+            if (results[0].status == "Inactive") {
+              return res
+                .status(200)
+                .json({ error: true, message: "User is inactive" });
+            }
+            if (results[0].type != "Admin") {
+              return res
+                .status(200)
+                .json({ error: true, message: "Action not allowed" });
+            }
+          } else {
+            return res
+              .status(200)
+              .json({ error: true, message: "User not found" });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Database error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   try {
     const userUpdates = req.body.userUpdates;
     for (const update of userUpdates) {
@@ -340,6 +499,45 @@ app.put("/change-user-status", (req, res) => {
 });
 
 app.get("/get-users", (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized - No token provided" });
+  }
+  jwt.verify(token, jwtSecret, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+    }
+    const email = decoded.email;
+    let query = `Select type, status From users where email = (?)`;
+    try {
+      connection.query(query, [email], (error, results) => {
+        if (error) {
+          console.error("Database error:", error);
+          res.status(500).json({ message: "Internal server error" });
+        } else {
+          if (results.length > 0) {
+            if (results[0].status == "Inactive") {
+              return res
+                .status(401)
+                .json({ error: true, message: "User is inactive" });
+            }
+            if (results[0].type == "Guest") {
+              return res
+                .status(401)
+                .json({ error: true, message: "Action not allowed" });
+            }
+          } else {
+            return res
+              .status(401)
+              .json({ error: true, message: "User not found" });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Database error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   try {
     connection.query(
       "SELECT `email`, `type`, `status`, `fullname` FROM `users`",
