@@ -643,6 +643,9 @@ app.post("/login", (req, res) => {
 
     if (results.length > 0) {
       const user = results[0];
+      if(user.status == 'Inactive'){
+        return res.status(200).json({error: true, message: 'User is Inactive'});
+      }
       const isMatch = await bcrypt.compare(password + pepper, user.password);
       if (isMatch) {
         const token = jwt.sign({ email }, jwtSecret, {
