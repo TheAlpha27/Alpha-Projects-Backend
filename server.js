@@ -15,7 +15,7 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://thealpha27.github.io/Alpha-Projects-Frontend"],
+    origin: ["http://localhost:3000", "https://alpha-projects-frontend.vercel.app/"],
     methods: ["POST", "OPTIONS", "GET", "PUT", "DELETE"],
     credentials: true,
   })
