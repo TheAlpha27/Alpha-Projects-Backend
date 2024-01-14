@@ -8,6 +8,7 @@ const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const cors = require("cors");
 const axios = require("axios");
+const moment = require("moment");
 const app = express();
 const PORT = process.env.PORT || 4000;
 app.use(express.json());
@@ -46,6 +47,32 @@ app.get("/", (req, res) => {
   res.json({ message: "Hello, World!" });
 });
 
+app.post("/getUpdatedUser", async (req, res) => {
+  const { email } = req.body;
+  let query = `Select type, status From users where email = (?)`;
+  try {
+    connection.query(query, [email], (error, results) => {
+      if (error) {
+        console.error("Database error:", error);
+        res.status(500).json({ message: "Internal server error" });
+      } else {
+        if (results.length > 0) {
+          if (results[0].status == "Inactive") {
+            res.status(200).json({ error: true, message: "User is inactive" });
+          } else {
+            res.status(200).json({ error: false, results });
+          }
+        } else {
+          res.status(200).json({ error: true, message: "User not found" });
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 app.get("/getProjects", async (req, res) => {
   let query = "SELECT * FROM projects ";
 
@@ -65,48 +92,62 @@ app.get("/getProjects", async (req, res) => {
 });
 
 app.post("/addProject", async (req, res) => {
-  const { project_name, project_category, project_manager, country, city } =
-    req.body;
+  const {
+    project_name,
+    project_category,
+    project_manager,
+    client,
+    country,
+    city,
+    contract_amount,
+  } = req.body;
   let lat;
   let lon;
   try {
     const response = await axios.get(
-        `https://nominatim.openstreetmap.org/search?city=${city}&country=${country}&format=json`
-      );
+      `https://nominatim.openstreetmap.org/search?city=${city}&country=${country}&format=json`
+    );
     if (response.data && response.data.length > 0) {
       lat = response.data[0].lat;
       lon = response.data[0].lon;
     } else {
-      res.status(500).json({ message: "Invalid city or country" });
+      res.status(200).json({ error: true, message: "Invalid city or country" });
+      return;
     }
   } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
+    res.status(200).json({ error: true, message: "Internal server error" });
+    return;
   }
 
+  let date = new Date();
+
   const query =
-    "INSERT INTO projects (project_name, project_category, project_manager, country, city, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    "INSERT INTO projects (project_name, project_category, project_manager, client, country, city, latitude, longitude, contract_amount, date_added) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
   const values = [
     project_name,
     project_category,
     project_manager,
+    client,
     country,
     city,
     lat,
     lon,
+    contract_amount,
+    date,
   ];
 
   try {
     connection.query(query, values, (error, results) => {
       if (error) {
         console.error("Database error:", error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(200).json({ error: true, message: "Internal server error" });
       } else {
-        res.status(200).json({ message: "Project saved" });
+        res.status(200).json({ error: false, message: "Project saved" });
       }
     });
   } catch (error) {
     console.error("Database error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(200).json({ error: true, message: "Internal server error" });
   }
 });
 
@@ -404,9 +445,7 @@ app.post("/login", (req, res) => {
 
     if (results.length > 0) {
       const user = results[0];
-
-      const isMatch = await bcrypt.compare(password + pepper, user.Password);
-
+      const isMatch = await bcrypt.compare(password + pepper, user.password);
       if (isMatch) {
         const token = jwt.sign({ email }, jwtSecret, {
           expiresIn: "1h",
@@ -418,7 +457,7 @@ app.post("/login", (req, res) => {
           token,
           userType: user.type,
           email,
-          fullName: user.fullname,
+          fullname: user.fullname,
         });
       } else {
         return res
