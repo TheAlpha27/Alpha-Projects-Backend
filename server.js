@@ -349,11 +349,11 @@ app.delete("/delete-users", (req, res) => {
 app.put("/change-user-type", (req, res) => {
   const token = req.headers.authorization;
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - No token provided" });
+    return res.status(200).json({ error: true, message: "Unauthorized - No token provided" });
   }
   jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
-      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+      return res.status(200).json({ error: true, message: "Invalid token" });
     }
     const email = decoded.email;
     let query = `Select type, status From users where email = (?)`;
@@ -425,11 +425,11 @@ app.put("/change-user-type", (req, res) => {
 app.put("/change-user-status", (req, res) => {
   const token = req.headers.authorization;
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - No token provided" });
+    return res.status(200).json({ error: true, message: "Unauthorized - No token provided" });
   }
   jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
-      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+      return res.status(200).json({ error: true, message: "Invalid token" });
     }
     const email = decoded.email;
     let query = `Select type, status From users where email = (?)`;
@@ -501,11 +501,11 @@ app.put("/change-user-status", (req, res) => {
 app.get("/get-users", (req, res) => {
   const token = req.headers.authorization;
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - No token provided" });
+    return res.status(200).json({ error: true, message: "Unauthorized - No token provided" });
   }
   jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
-      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+      return res.status(200).json({ error: true, message: "Invalid token" });
     }
     const email = decoded.email;
     let query = `Select type, status From users where email = (?)`;
