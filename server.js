@@ -15,7 +15,10 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://alpha-projects-frontend.vercel.app"],
+    origin: [
+      "http://localhost:3000",
+      "https://alpha-projects-frontend.vercel.app",
+    ],
     methods: ["POST", "OPTIONS", "GET", "PUT", "DELETE"],
     credentials: true,
   })
@@ -349,7 +352,9 @@ app.delete("/delete-users", (req, res) => {
 app.put("/change-user-type", (req, res) => {
   const token = req.headers.authorization;
   if (!token) {
-    return res.status(200).json({ error: true, message: "Unauthorized - No token provided" });
+    return res
+      .status(200)
+      .json({ error: true, message: "Unauthorized - No token provided" });
   }
   jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
@@ -361,15 +366,15 @@ app.put("/change-user-type", (req, res) => {
       connection.query(query, [email], (error, results) => {
         if (error) {
           console.error("Database error:", error);
-          res.status(500).json({ message: "Internal server error" });
+          return res.status(500).json({ message: "Internal server error" });
         } else {
           if (results.length > 0) {
             if (results[0].status == "Inactive") {
               return res
                 .status(200)
-                .json({ error: true, message: "User is inactive" });
+                .json({ error: true, message: "Action not allowed" });
             }
-            if (results[0].type != "Admin") {
+            if (results[0].type == "Guest" || results[0].type == "User") {
               return res
                 .status(200)
                 .json({ error: true, message: "Action not allowed" });
@@ -383,7 +388,7 @@ app.put("/change-user-type", (req, res) => {
       });
     } catch (error) {
       console.error("Database error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
   try {
@@ -414,7 +419,6 @@ app.put("/change-user-type", (req, res) => {
         }
       );
     }
-
     return res.status(200).json({ message: "User types updated." });
   } catch (error) {
     console.error(error);
@@ -425,7 +429,9 @@ app.put("/change-user-type", (req, res) => {
 app.put("/change-user-status", (req, res) => {
   const token = req.headers.authorization;
   if (!token) {
-    return res.status(200).json({ error: true, message: "Unauthorized - No token provided" });
+    return res
+      .status(200)
+      .json({ error: true, message: "Unauthorized - No token provided" });
   }
   jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
@@ -501,7 +507,9 @@ app.put("/change-user-status", (req, res) => {
 app.get("/get-users", (req, res) => {
   const token = req.headers.authorization;
   if (!token) {
-    return res.status(200).json({ error: true, message: "Unauthorized - No token provided" });
+    return res
+      .status(200)
+      .json({ error: true, message: "Unauthorized - No token provided" });
   }
   jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
@@ -518,17 +526,17 @@ app.get("/get-users", (req, res) => {
           if (results.length > 0) {
             if (results[0].status == "Inactive") {
               return res
-                .status(401)
+                .status(200)
                 .json({ error: true, message: "User is inactive" });
             }
             if (results[0].type == "Guest") {
               return res
-                .status(401)
+                .status(200)
                 .json({ error: true, message: "Action not allowed" });
             }
           } else {
             return res
-              .status(401)
+              .status(200)
               .json({ error: true, message: "User not found" });
           }
         }
@@ -643,8 +651,10 @@ app.post("/login", (req, res) => {
 
     if (results.length > 0) {
       const user = results[0];
-      if(user.status == 'Inactive'){
-        return res.status(200).json({error: true, message: 'User is Inactive'});
+      if (user.status == "Inactive") {
+        return res
+          .status(200)
+          .json({ error: true, message: "User is Inactive" });
       }
       const isMatch = await bcrypt.compare(password + pepper, user.password);
       if (isMatch) {
