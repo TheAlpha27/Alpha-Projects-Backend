@@ -364,6 +364,7 @@ app.put("/change-user-type", (req, res) => {
     let query = `Select type, status From users where email = (?)`;
     try {
       connection.query(query, [email], (error, results) => {
+        console.log(results);
         if (error) {
           console.error("Database error:", error);
           return res.status(500).json({ message: "Internal server error" });
@@ -375,9 +376,45 @@ app.put("/change-user-type", (req, res) => {
                 .json({ error: true, message: "Action not allowed" });
             }
             if (results[0].type == "Guest" || results[0].type == "User") {
+              console.log("here");
               return res
                 .status(200)
                 .json({ error: true, message: "Action not allowed" });
+            } else {
+              try {
+                const userUpdates = req.body.userUpdates;
+                for (const update of userUpdates) {
+                  const userEmail = update.email;
+                  const userType = update.type;
+                  if (
+                    !userEmail ||
+                    !userType ||
+                    typeof userEmail !== "string" ||
+                    typeof userType !== "string"
+                  ) {
+                    return res.status(400).json({
+                      error:
+                        'Invalid input in array. Each object should have "email" and "type" properties.',
+                    });
+                  }
+                  connection.query(
+                    "UPDATE users SET `type` = ? WHERE `email` = ?",
+                    [userType, userEmail],
+                    (error, results) => {
+                      if (error) {
+                        console.error("Database error:", error);
+                        return res
+                          .status(500)
+                          .json({ error: "Internal Server Error" });
+                      }
+                    }
+                  );
+                }
+                return res.status(200).json({ message: "User types updated." });
+              } catch (error) {
+                console.error(error);
+                return res.status(500).json({ error: "Internal Server Error" });
+              }
             }
           } else {
             return res
@@ -391,39 +428,6 @@ app.put("/change-user-type", (req, res) => {
       return res.status(500).json({ message: "Internal server error" });
     }
   });
-  try {
-    const userUpdates = req.body.userUpdates;
-    for (const update of userUpdates) {
-      const userEmail = update.email;
-      const userType = update.type;
-      if (
-        !userEmail ||
-        !userType ||
-        typeof userEmail !== "string" ||
-        typeof userType !== "string"
-      ) {
-        return res.status(400).json({
-          error:
-            'Invalid input in array. Each object should have "email" and "type" properties.',
-        });
-      }
-
-      connection.query(
-        "UPDATE users SET `type` = ? WHERE `email` = ?",
-        [userType, userEmail],
-        (error, results) => {
-          if (error) {
-            console.error("Database error:", error);
-            return res.status(500).json({ error: "Internal Server Error" });
-          }
-        }
-      );
-    }
-    return res.status(200).json({ message: "User types updated." });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
 });
 
 app.put("/change-user-status", (req, res) => {
