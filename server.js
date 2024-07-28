@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { User, Project } = require("./Models/schema");
+const { UserStatus, UserTypes } = require("./constants");
 const express = require("express");
 require("dotenv").config();
 const otpGenerator = require("otp-generator");
@@ -50,7 +51,7 @@ app.post("/getUpdatedUser", async (req, res) => {
   try {
     const user = await User.findOne({ email });
     if (user) {
-      if (user.status === "Inactive") {
+      if (user.status === UserStatus.inactive) {
         res.status(200).json({ error: true, message: "User is inactive" });
       } else {
         const token = jwt.sign({ email }, jwtSecret, { expiresIn: "1h" });
@@ -102,11 +103,11 @@ app.post("/addProject", async (req, res) => {
       return res.status(200).json({ error: true, message: "User not found" });
     }
 
-    if (user.status === "Inactive") {
+    if (user.status === UserStatus.inactive) {
       return res.status(200).json({ error: true, message: "User is inactive" });
     }
 
-    if (user.type === "Guest") {
+    if (user.type === UserType.guest) {
       return res
         .status(200)
         .json({ error: true, message: "Action not allowed" });
@@ -276,6 +277,8 @@ app.post("/createPassword", async (req, res) => {
 
     user.password = hashedPassword;
     user.fullname = fullname;
+    user.type = UserTypes.user;
+    user.status = UserStatus.active;
 
     await user.save();
 
@@ -287,8 +290,9 @@ app.post("/createPassword", async (req, res) => {
       error: false,
       message: "Password created successfully",
       token,
-      userType: user.type,
+      type: user.type,
       email: user.email,
+      fullname: user.fullname,
     });
   } catch (error) {
     console.error("Database error:", error);
@@ -308,7 +312,9 @@ app.post("/login", async (req, res) => {
         .json({ error: true, message: "Invalid email or password" });
     }
 
-    if (user.status === "Inactive") {
+    console.log("login: ", { user });
+
+    if (user.status === UserStatus.inactive) {
       return res.status(200).json({ error: true, message: "User is Inactive" });
     }
 
@@ -327,7 +333,7 @@ app.post("/login", async (req, res) => {
       error: false,
       message: "Login successful",
       token,
-      userType: user.type,
+      type: user.type,
       email: user.email,
       fullname: user.fullname,
     });
@@ -413,12 +419,10 @@ app.post("/resetPassword", async (req, res) => {
 
     if (result.nModified === 0) {
       // If no documents were modified, the user was not found or the password was not updated
-      return res
-        .status(404)
-        .json({
-          error: true,
-          message: "User not found or password reset failed",
-        });
+      return res.status(404).json({
+        error: true,
+        message: "User not found or password reset failed",
+      });
     }
 
     return res.status(200).json({
@@ -446,12 +450,12 @@ app.delete("/delete-users", async (req, res) => {
     try {
       const user = await User.findOne({ email });
       if (user) {
-        if (user.status === "Inactive") {
+        if (user.status === UserStatus.inactive) {
           return res
             .status(200)
             .json({ error: true, message: "User is inactive" });
         }
-        if (user.type !== "Admin") {
+        if (user.type !== UserType.admin) {
           return res
             .status(200)
             .json({ error: true, message: "Action not allowed" });
@@ -492,11 +496,11 @@ app.put("/change-user-type", async (req, res) => {
       return res.status(200).json({ error: true, message: "User not found" });
     }
 
-    if (user.status === "Inactive") {
+    if (user.status === UserStatus.inactive) {
       return res.status(200).json({ error: true, message: "User is inactive" });
     }
 
-    if (user.type !== "Admin") {
+    if (user.type !== UserType.admin) {
       return res
         .status(200)
         .json({ error: true, message: "Action not allowed" });
@@ -539,7 +543,7 @@ app.put("/change-user-type", async (req, res) => {
       }
     }
 
-    return res.status(200).json({ message: "User types updated." });
+    return res.status(200).json({ message: "Action completed" });
   } catch (error) {
     if (error.name === "JsonWebTokenError") {
       return res.status(200).json({ error: true, message: "Invalid token" });
@@ -569,11 +573,11 @@ app.put("/change-user-status", async (req, res) => {
       return res.status(200).json({ error: true, message: "User not found" });
     }
 
-    if (user.status === "Inactive") {
+    if (user.status === UserStatus.inactive) {
       return res.status(200).json({ error: true, message: "User is inactive" });
     }
 
-    if (user.type !== "Admin") {
+    if (user.type !== UserType.admin) {
       return res
         .status(200)
         .json({ error: true, message: "Action not allowed" });
@@ -616,7 +620,7 @@ app.put("/change-user-status", async (req, res) => {
       }
     }
 
-    return res.status(200).json({ message: "User statuses updated." });
+    return res.status(200).json({ message: "Action completed" });
   } catch (error) {
     if (error.name === "JsonWebTokenError") {
       return res.status(200).json({ error: true, message: "Invalid token" });
@@ -646,11 +650,11 @@ app.get("/get-users", async (req, res) => {
       return res.status(200).json({ error: true, message: "User not found" });
     }
 
-    if (user.status === "Inactive") {
+    if (user.status === UserStatus.inactive) {
       return res.status(200).json({ error: true, message: "User is inactive" });
     }
 
-    if (user.type === "Guest") {
+    if (user.type === UserType.guest) {
       return res
         .status(200)
         .json({ error: true, message: "Action not allowed" });
