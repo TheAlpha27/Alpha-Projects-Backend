@@ -88,43 +88,65 @@ app.post("/addProject", async (req, res) => {
     contract_amount,
   } = req.body;
 
-  // TODO - Lat/Lon logic and Check auth
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized - No token provided" });
+  }
 
   try {
+    const decoded = jwt.verify(token, jwtSecret);
+    const email = decoded.email;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(200).json({ error: true, message: "User not found" });
+    }
+
+    if (user.status === "Inactive") {
+      return res.status(200).json({ error: true, message: "User is inactive" });
+    }
+
+    if (user.type === "Guest") {
+      return res
+        .status(200)
+        .json({ error: true, message: "Action not allowed" });
+    }
+
     const response = await axios.get(
       `https://nominatim.openstreetmap.org/search?city=${city}&country=${country}&format=json`
     );
+
+    let lat, lon;
     if (response.data && response.data.length > 0) {
       lat = response.data[0].lat;
       lon = response.data[0].lon;
     } else {
-      res.status(200).json({ error: true, message: "Invalid city or country" });
-      return;
+      return res
+        .status(200)
+        .json({ error: true, message: "Invalid city or country" });
     }
-  } catch (error) {
-    res.status(200).json({ error: true, message: "Internal server error" });
-    return;
-  }
 
-  const project = new Project({
-    project_name,
-    project_category,
-    project_manager,
-    client,
-    country,
-    city,
-    latitude: lat,
-    longitude: lon,
-    contract_amount,
-    date_added: new Date(),
-  });
+    const project = new Project({
+      project_name,
+      project_category,
+      project_manager,
+      client,
+      country,
+      city,
+      latitude: lat,
+      longitude: lon,
+      contract_amount,
+      date_added: new Date(),
+    });
 
-  try {
     await project.save();
     res.status(200).json({ error: false, message: "Project saved" });
   } catch (error) {
-    console.error("Database error:", error);
-    res.status(200).json({ error: true, message: "Internal server error" });
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Unauthorized - Invalid token" });
+    }
+    console.error("Error:", error);
+    res.status(500).json({ error: true, message: "Internal server error" });
   }
 });
 
@@ -213,6 +235,203 @@ app.post("/signup", async (req, res) => {
   }
 });
 
+// Verify OTP
+app.post("/verify-otp", async (req, res) => {
+  const { email, otp } = req.body;
+
+  try {
+    const user = await User.findOne({ email, otp });
+    if (!user) {
+      return res.status(200).json({ error: true, message: "Invalid OTP" });
+    }
+
+    user.otp = null;
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ error: false, message: "OTP verified successfully" });
+  } catch (error) {
+    console.error("Database error:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Create Password
+app.post("/createPassword", async (req, res) => {
+  const { email, password, fullname } = req.body;
+
+  try {
+    const user = await User.findOne({ email, password: null });
+    if (!user) {
+      return res
+        .status(200)
+        .json({ error: true, message: "Invalid user or OTP already used" });
+    }
+
+    const saltRounds = 10;
+    const pepper = process.env.PEPPER;
+
+    const hashedPassword = await bcrypt.hash(password + pepper, saltRounds);
+
+    user.password = hashedPassword;
+    user.fullname = fullname;
+
+    await user.save();
+
+    const token = jwt.sign({ email: user.email }, jwtSecret, {
+      expiresIn: "1h",
+    });
+
+    return res.status(200).json({
+      error: false,
+      message: "Password created successfully",
+      token,
+      userType: user.type,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Login
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(200)
+        .json({ error: true, message: "Invalid email or password" });
+    }
+
+    if (user.status === "Inactive") {
+      return res.status(200).json({ error: true, message: "User is Inactive" });
+    }
+
+    const isMatch = await bcrypt.compare(password + pepper, user.password);
+    if (!isMatch) {
+      return res
+        .status(200)
+        .json({ error: true, message: "Invalid email or password" });
+    }
+
+    const token = jwt.sign({ email: user.email }, jwtSecret, {
+      expiresIn: "1h",
+    });
+
+    return res.status(200).json({
+      error: false,
+      message: "Login successful",
+      token,
+      userType: user.type,
+      email: user.email,
+      fullname: user.fullname,
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Forgot Password
+app.post("/forgotPassword", async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({
+      email,
+      password: { $ne: null, $ne: "" },
+    });
+    if (!user) {
+      return res.status(200).json({
+        error: true,
+        message: "Invalid user or password reset not allowed",
+      });
+    }
+
+    const generatedOTP = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    user.otp = generatedOTP;
+    await user.save();
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "utsav.soni.27@gmail.com",
+        pass: process.env.NODEMAILER_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: "utsav.soni.27@gmail.com",
+      to: email,
+      subject: "OTP for Password Reset",
+      text: `Your OTP for password reset is: ${generatedOTP}`,
+    };
+
+    transporter.sendMail(mailOptions, (emailError, info) => {
+      if (emailError) {
+        console.error("Email sending error: " + emailError.stack);
+        return res.status(500).json({ error: "Internal Server Error" });
+      }
+      console.log("Email sent: " + info.response);
+
+      return res
+        .status(200)
+        .json({ error: false, message: "OTP sent for password reset" });
+    });
+  } catch (error) {
+    console.error("Database error: " + error.stack);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Reset Password
+app.post("/resetPassword", async (req, res) => {
+  const { email, password } = req.body;
+  const saltRounds = 10;
+  const pepper = process.env.PEPPER; // Ensure you have pepper in your environment variables
+
+  try {
+    // Hash the new password with pepper
+    const hashedPassword = await bcrypt.hash(password + pepper, saltRounds);
+
+    // Find the user by email and update the password
+    const result = await User.updateOne(
+      { email },
+      { $set: { password: hashedPassword } }
+    );
+
+    if (result.nModified === 0) {
+      // If no documents were modified, the user was not found or the password was not updated
+      return res
+        .status(404)
+        .json({
+          error: true,
+          message: "User not found or password reset failed",
+        });
+    }
+
+    return res.status(200).json({
+      error: false,
+      message: "Password reset successful",
+      email,
+    });
+  } catch (error) {
+    console.error("Database error: " + error.stack);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // Delete User
 app.delete("/delete-users", async (req, res) => {
   const token = req.headers.authorization;
@@ -263,29 +482,191 @@ app.put("/change-user-type", async (req, res) => {
       .status(200)
       .json({ error: true, message: "Unauthorized - No token provided" });
   }
-  jwt.verify(token, jwtSecret, async (err, decoded) => {
-    if (err) {
+
+  try {
+    const decoded = jwt.verify(token, jwtSecret);
+    const email = decoded.email;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(200).json({ error: true, message: "User not found" });
+    }
+
+    if (user.status === "Inactive") {
+      return res.status(200).json({ error: true, message: "User is inactive" });
+    }
+
+    if (user.type !== "Admin") {
+      return res
+        .status(200)
+        .json({ error: true, message: "Action not allowed" });
+    }
+
+    const userUpdates = req.body.userUpdates;
+    if (!Array.isArray(userUpdates)) {
+      return res.status(400).json({
+        error: true,
+        message: "Invalid input format. userUpdates should be an array.",
+      });
+    }
+
+    for (const update of userUpdates) {
+      const userEmail = update.email;
+      const userType = update.type;
+      if (
+        !userEmail ||
+        !userType ||
+        typeof userEmail !== "string" ||
+        typeof userType !== "string"
+      ) {
+        return res.status(400).json({
+          error: true,
+          message:
+            'Invalid input in array. Each object should have "email" and "type" properties.',
+        });
+      }
+
+      const updatedUser = await User.findOneAndUpdate(
+        { email: userEmail },
+        { type: userType },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        return res
+          .status(200)
+          .json({ error: true, message: `User not found: ${userEmail}` });
+      }
+    }
+
+    return res.status(200).json({ message: "User types updated." });
+  } catch (error) {
+    if (error.name === "JsonWebTokenError") {
       return res.status(200).json({ error: true, message: "Invalid token" });
     }
+    console.error("Error:", error);
+    return res
+      .status(500)
+      .json({ error: true, message: "Internal server error" });
+  }
+});
+
+// Change User Status
+app.put("/change-user-status", async (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res
+      .status(200)
+      .json({ error: true, message: "Unauthorized - No token provided" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, jwtSecret);
     const email = decoded.email;
-    try {
-      const user = await User.findOne({ email });
-      if (user) {
-        if (user.status === "Inactive") {
-          return res
-            .status(200)
-            .json({ error: true, message: "User is inactive" });
-        }
-        // TODO Update user type logic here
-      } else {
-        return res.status(200).json({ error: true, message: "User not found" });
-      }
-    } catch (error) {
-      console.error("Database error:", error);
-      return res.status(500).json({ message: "Internal server error" });
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(200).json({ error: true, message: "User not found" });
     }
-  });
-  // TODO Update user type in MongoDB
+
+    if (user.status === "Inactive") {
+      return res.status(200).json({ error: true, message: "User is inactive" });
+    }
+
+    if (user.type !== "Admin") {
+      return res
+        .status(200)
+        .json({ error: true, message: "Action not allowed" });
+    }
+
+    const userUpdates = req.body.userUpdates;
+    if (!Array.isArray(userUpdates)) {
+      return res.status(400).json({
+        error: true,
+        message: "Invalid input format. userUpdates should be an array.",
+      });
+    }
+
+    for (const update of userUpdates) {
+      const userEmail = update.email;
+      const userStatus = update.status;
+      if (
+        !userEmail ||
+        !userStatus ||
+        typeof userEmail !== "string" ||
+        typeof userStatus !== "string"
+      ) {
+        return res.status(400).json({
+          error: true,
+          message:
+            'Invalid input in array. Each object should have "email" and "status" properties.',
+        });
+      }
+
+      const updatedUser = await User.findOneAndUpdate(
+        { email: userEmail },
+        { status: userStatus },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        return res
+          .status(200)
+          .json({ error: true, message: `User not found: ${userEmail}` });
+      }
+    }
+
+    return res.status(200).json({ message: "User statuses updated." });
+  } catch (error) {
+    if (error.name === "JsonWebTokenError") {
+      return res.status(200).json({ error: true, message: "Invalid token" });
+    }
+    console.error("Error:", error);
+    return res
+      .status(500)
+      .json({ error: true, message: "Internal server error" });
+  }
+});
+
+// Get Users
+app.get("/get-users", async (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res
+      .status(200)
+      .json({ error: true, message: "Unauthorized - No token provided" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, jwtSecret);
+    const email = decoded.email;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(200).json({ error: true, message: "User not found" });
+    }
+
+    if (user.status === "Inactive") {
+      return res.status(200).json({ error: true, message: "User is inactive" });
+    }
+
+    if (user.type === "Guest") {
+      return res
+        .status(200)
+        .json({ error: true, message: "Action not allowed" });
+    }
+
+    const users = await User.find({}, "email type status fullname");
+    return res.status(200).json(users);
+  } catch (error) {
+    if (error.name === "JsonWebTokenError") {
+      return res.status(200).json({ error: true, message: "Invalid token" });
+    }
+    console.error("Error:", error);
+    return res
+      .status(500)
+      .json({ error: true, message: "Internal server error" });
+  }
 });
 
 app.listen(PORT, () => {
