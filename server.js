@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const { User, Project } = require("./Models/schema");
-const { UserStatus, UserTypes } = require("./constants");
+const { UserStatus, UserTypes, Messages } = require("./constants");
 const express = require("express");
 require("dotenv").config();
 const otpGenerator = require("otp-generator");
