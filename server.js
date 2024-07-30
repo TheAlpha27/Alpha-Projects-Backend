@@ -284,20 +284,17 @@ app.post("/forgotPassword", async (req, res) => {
 app.post("/resetPassword", async (req, res) => {
   const { email, password } = req.body;
   const saltRounds = 10;
-  const pepper = process.env.PEPPER; // Ensure you have pepper in your environment variables
+  const pepper = process.env.PEPPER;
 
   try {
-    // Hash the new password with pepper
     const hashedPassword = await bcrypt.hash(password + pepper, saltRounds);
 
-    // Find the user by email and update the password
     const result = await User.updateOne(
       { email },
       { $set: { password: hashedPassword } }
     );
 
     if (result.nModified === 0) {
-      // If no documents were modified, the user was not found or the password was not updated
       return res.status(400).json({
         message: "User not found or password reset failed",
       });
