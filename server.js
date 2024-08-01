@@ -10,6 +10,7 @@ const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const cors = require("cors");
 const axios = require("axios");
+const protectRoute = require("./middleware/protectRoute");
 const app = express();
 const PORT = process.env.PORT || 4000;
 app.use(express.json());
@@ -45,7 +46,7 @@ app.get("/", (req, res) => {
   res.json({ message: "Hello, World!" });
 });
 
-/******************************************          AUTH           ************************************** */
+/****************    AUTH    ****************/
 
 // SignUp
 app.post("/signup", async (req, res) => {
@@ -310,40 +311,14 @@ app.post("/resetPassword", async (req, res) => {
   }
 });
 
-/******************************************          USERS           ************************************** */
+/****************    USERS    ****************/
 
 // Get Users
-app.get("/get-users", async (req, res) => {
-  const token = req.headers.authorization;
-  if (!token) {
-    return res
-      .status(401)
-      .json({ message: "Unauthorized - No token provided" });
-  }
-
+app.get("/get-users", protectRoute(UserTypes.user), async (req, res) => {
   try {
-    const decoded = jwt.verify(token, jwtSecret);
-    const email = decoded.email;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    if (user.status === UserStatus.inactive) {
-      return res.status(401).json({ message: "User is inactive" });
-    }
-
-    if (user.type === UserType.guest) {
-      return res.status(403).json({ message: "Action not allowed" });
-    }
-
     const users = await User.find({}, "email type status fullname");
     return res.status(200).json(users);
   } catch (error) {
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({ message: "Invalid token" });
-    }
     console.error("Error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -351,53 +326,17 @@ app.get("/get-users", async (req, res) => {
 
 // Get Updated User
 app.post("/getUpdatedUser", async (req, res) => {
-  const { email } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (user) {
-      if (user.status === UserStatus.inactive) {
-        res.status(401).json({ message: "User is inactive" });
-      } else {
-        const token = jwt.sign({ email }, jwtSecret, { expiresIn: "1h" });
-        res.status(200).json({ results: user, token });
-      }
-    } else {
-      res.status(401).json({ message: "User not found" });
-    }
-  } catch (error) {
-    console.error("Database error:", error);
-    res.status(500).json({ message: "Internal server error" });
+  const user = req.user;
+  if (user) {
+    const token = jwt.sign({ email }, jwtSecret, { expiresIn: "1h" });
+    res.status(200).json({ results: user, token });
+  } else {
+    res.status(401).json({ message: "User not found" });
   }
 });
 
 // Delete User
-app.delete("/delete-users", async (req, res) => {
-  const token = req.headers.authorization;
-  if (!token) {
-    return res.status(401).json({ error: "Unauthorized - No token provided" });
-  }
-  jwt.verify(token, jwtSecret, async (err, decoded) => {
-    if (err) {
-      return res.status(401).json({ error: "Unauthorized - Invalid token" });
-    }
-    const email = decoded.email;
-    try {
-      const user = await User.findOne({ email });
-      if (user) {
-        if (user.status === UserStatus.inactive) {
-          return res.status(401).json({ message: "User is inactive" });
-        }
-        if (user.type !== UserType.admin) {
-          return res.status(403).json({ message: "Action not allowed" });
-        }
-      } else {
-        return res.status(401).json({ message: "User not found" });
-      }
-    } catch (error) {
-      console.error("Database error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
+app.delete("/delete-users", protectRoute(UserTypes.admin), async (req, res) => {
   try {
     const emails = req.body.userEmail;
     await User.deleteMany({ email: { $in: emails } });
@@ -409,151 +348,107 @@ app.delete("/delete-users", async (req, res) => {
 });
 
 // Change User Type
-app.put("/change-user-type", async (req, res) => {
-  const token = req.headers.authorization;
-  if (!token) {
-    return res
-      .status(401)
-      .json({ message: "Unauthorized - No token provided" });
-  }
-
-  try {
-    const decoded = jwt.verify(token, jwtSecret);
-    const email = decoded.email;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    if (user.status === UserStatus.inactive) {
-      return res.status(401).json({ message: "User is inactive" });
-    }
-
-    if (user.type !== UserType.admin) {
-      return res.status(403).json({ message: "Action not allowed" });
-    }
-
-    const userUpdates = req.body.userUpdates;
-    if (!Array.isArray(userUpdates)) {
-      return res.status(400).json({
-        message: "Invalid input format. userUpdates should be an array.",
-      });
-    }
-
-    for (const update of userUpdates) {
-      const userEmail = update.email;
-      const userType = update.type;
-      if (
-        !userEmail ||
-        !userType ||
-        typeof userEmail !== "string" ||
-        typeof userType !== "string"
-      ) {
+app.put(
+  "/change-user-type",
+  protectRoute(UserTypes.admin),
+  async (req, res) => {
+    try {
+      const userUpdates = req.body.userUpdates;
+      if (!Array.isArray(userUpdates)) {
         return res.status(400).json({
-          message:
-            'Invalid input in array. Each object should have "email" and "type" properties.',
+          message: "Invalid input format. userUpdates should be an array.",
         });
       }
 
-      const updatedUser = await User.findOneAndUpdate(
-        { email: userEmail },
-        { type: userType },
-        { new: true }
-      );
+      for (const update of userUpdates) {
+        const userEmail = update.email;
+        const userType = update.type;
+        if (
+          !userEmail ||
+          !userType ||
+          typeof userEmail !== "string" ||
+          typeof userType !== "string"
+        ) {
+          return res.status(400).json({
+            message:
+              'Invalid input in array. Each object should have "email" and "type" properties.',
+          });
+        }
 
-      if (!updatedUser) {
-        return res
-          .status(400)
-          .json({ message: `User not found: ${userEmail}` });
+        const updatedUser = await User.findOneAndUpdate(
+          { email: userEmail },
+          { type: userType },
+          { new: true }
+        );
+
+        if (!updatedUser) {
+          return res
+            .status(400)
+            .json({ message: `User not found: ${userEmail}` });
+        }
       }
-    }
 
-    return res.status(200).json({ message: "Action completed" });
-  } catch (error) {
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(200).json({ message: "Action completed" });
+    } catch (error) {
+      console.error("Error:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
-    console.error("Error:", error);
-    return res.status(500).json({ message: "Internal server error" });
   }
-});
+);
 
 // Change User Status
-app.put("/change-user-status", async (req, res) => {
-  const token = req.headers.authorization;
-  if (!token) {
-    return res
-      .status(401)
-      .json({ message: "Unauthorized - No token provided" });
-  }
-
-  try {
-    const decoded = jwt.verify(token, jwtSecret);
-    const email = decoded.email;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    if (user.status === UserStatus.inactive) {
-      return res.status(401).json({ message: "User is inactive" });
-    }
-
-    if (user.type !== UserType.admin) {
-      return res.status(403).json({ message: "Action not allowed" });
-    }
-
-    const userUpdates = req.body.userUpdates;
-    if (!Array.isArray(userUpdates)) {
-      return res.status(400).json({
-        message: "Invalid input format. userUpdates should be an array.",
-      });
-    }
-
-    for (const update of userUpdates) {
-      const userEmail = update.email;
-      const userStatus = update.status;
-      if (
-        !userEmail ||
-        !userStatus ||
-        typeof userEmail !== "string" ||
-        typeof userStatus !== "string"
-      ) {
+app.put(
+  "/change-user-status",
+  protectRoute(UserTypes.admin),
+  async (req, res) => {
+    try {
+      const userUpdates = req.body.userUpdates;
+      if (!Array.isArray(userUpdates)) {
         return res.status(400).json({
-          message:
-            'Invalid input in array. Each object should have "email" and "status" properties.',
+          message: "Invalid input format. userUpdates should be an array.",
         });
       }
 
-      const updatedUser = await User.findOneAndUpdate(
-        { email: userEmail },
-        { status: userStatus },
-        { new: true }
-      );
+      for (const update of userUpdates) {
+        const userEmail = update.email;
+        const userStatus = update.status;
+        if (
+          !userEmail ||
+          !userStatus ||
+          typeof userEmail !== "string" ||
+          typeof userStatus !== "string"
+        ) {
+          return res.status(400).json({
+            message:
+              'Invalid input in array. Each object should have "email" and "status" properties.',
+          });
+        }
 
-      if (!updatedUser) {
-        return res
-          .status(400)
-          .json({ message: `User not found: ${userEmail}` });
+        const updatedUser = await User.findOneAndUpdate(
+          { email: userEmail },
+          { status: userStatus },
+          { new: true }
+        );
+
+        if (!updatedUser) {
+          return res
+            .status(400)
+            .json({ message: `User not found: ${userEmail}` });
+        }
       }
-    }
 
-    return res.status(200).json({ message: "Action completed" });
-  } catch (error) {
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(200).json({ message: "Action completed" });
+    } catch (error) {
+      console.error("Error:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
-    console.error("Error:", error);
-    return res.status(500).json({ message: "Internal server error" });
   }
-});
+);
 
-/******************************************          PROJECTS           ************************************** */
+/****************    PROJECTS    ****************/
 
 // Get Projects
-app.get("/getProjects", async (req, res) => {
+app.get("/getProjects", protectRoute(), async (req, res) => {
   try {
     const projects = await Project.find();
     res.json(projects);
@@ -564,7 +459,7 @@ app.get("/getProjects", async (req, res) => {
 });
 
 // Add New Project
-app.post("/addProject", async (req, res) => {
+app.post("/addProject", protectRoute(UserTypes.user), async (req, res) => {
   const {
     project_name,
     project_category,
@@ -575,28 +470,7 @@ app.post("/addProject", async (req, res) => {
     contract_amount,
   } = req.body;
 
-  const token = req.headers.authorization;
-  if (!token) {
-    return res.status(401).json({ error: "Unauthorized - No token provided" });
-  }
-
   try {
-    const decoded = jwt.verify(token, jwtSecret);
-    const email = decoded.email;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    if (user.status === UserStatus.inactive) {
-      return res.status(401).json({ message: "User is inactive" });
-    }
-
-    if (user.type === UserType.guest) {
-      return res.status(403).json({ message: "Action not allowed" });
-    }
-
     const response = await axios.get(
       `https://nominatim.openstreetmap.org/search?city=${city}&country=${country}&format=json`
     );
@@ -625,9 +499,6 @@ app.post("/addProject", async (req, res) => {
     await project.save();
     res.status(200).json({ error: false, message: "Project saved" });
   } catch (error) {
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({ error: "Unauthorized - Invalid token" });
-    }
     console.error("Error:", error);
     res.status(500).json({ error: true, message: "Internal server error" });
   }
