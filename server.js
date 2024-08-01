@@ -325,7 +325,7 @@ app.get("/get-users", protectRoute(UserTypes.user), async (req, res) => {
 });
 
 // Get Updated User
-app.post("/getUpdatedUser", async (req, res) => {
+app.post("/getUpdatedUser", protectRoute(), async (req, res) => {
   const user = req.user;
   if (user) {
     const token = jwt.sign({ email }, jwtSecret, { expiresIn: "1h" });
