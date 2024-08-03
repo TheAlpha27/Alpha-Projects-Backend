@@ -347,9 +347,9 @@ app.post("/getUpdatedUser", protectRoute(), async (req, res) => {
 });
 
 // Delete User
-app.delete("/delete-users", protectRoute(UserTypes.admin), async (req, res) => {
+app.post("/delete-users", protectRoute(UserTypes.admin), async (req, res) => {
   try {
-    const emails = req.body.userEmail;
+    const emails = req.body;
     await User.deleteMany({ email: { $in: emails } });
     return res.json({ message: "Users deleted successfully." });
   } catch (error) {
@@ -510,17 +510,99 @@ app.post("/addProject", protectRoute(UserTypes.user), async (req, res) => {
     });
 
     await project.save();
-    res.status(200).json({ error: false, message: "Project saved" });
+    res.status(200).json({ message: "Project saved" });
   } catch (error) {
     console.log("Error:", { error });
     if (error.code === 11000) {
-      res
-        .status(500)
-        .json({ error: true, message: "Project name must be unique" });
+      res.status(500).json({ message: "Project name must be unique" });
     }
-    res.status(500).json({ error: true, message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// Update Project
+app.put("/updateProject", protectRoute(UserTypes.admin), async (req, res) => {
+  const {
+    project_name,
+    project_category,
+    project_manager,
+    status,
+    client,
+    country,
+    city,
+    contract_amount,
+    latitude,
+    longitude,
+    _id,
+  } = req.body;
+
+  try {
+    const existingProject = await Project.findById(_id);
+    if (!existingProject) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    let lat = latitude;
+    let lon = longitude;
+
+    if (existingProject.city !== city || existingProject.country !== country) {
+      const response = await axios.get(
+        `https://nominatim.openstreetmap.org/search?city=${city}&country=${country}&format=json`
+      );
+
+      if (response.data && response.data.length > 0) {
+        lat = response.data[0].lat;
+        lon = response.data[0].lon;
+      } else {
+        return res.status(400).json({ message: "Invalid city or country" });
+      }
+    }
+
+    existingProject.project_name = project_name ?? existingProject.project_name;
+    existingProject.project_category =
+      project_category ?? existingProject.project_category;
+    existingProject.project_manager =
+      project_manager ?? existingProject.project_manager;
+    existingProject.status = status ?? existingProject.status;
+    existingProject.client = client ?? existingProject.client;
+    existingProject.country = country ?? existingProject.country;
+    existingProject.city = city ?? existingProject.city;
+    existingProject.latitude = lat;
+    existingProject.longitude = lon;
+    existingProject.contract_amount =
+      contract_amount ?? existingProject.contract_amount;
+    existingProject.date_added = existingProject.date_added;
+
+    await existingProject.save();
+    res.status(200).json({ message: "Project updated" });
+  } catch (error) {
+    console.log("Error:", { error });
+    if (error.code === 11000) {
+      res.status(500).json({ message: "Project name must be unique" });
+    }
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Delete Project
+app.delete(
+  "/deleteProject/:id",
+  protectRoute(UserTypes.admin),
+  async (req, res) => {
+    try {
+      const project = await Project.findById(req.params.id);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      await Project.deleteOne({ _id: req.params.id });
+      res.status(200).json({ error: false, message: "Project deleted" });
+    } catch (error) {
+      console.log("Error:", { error });
+      res.status(500).json({ error: true, message: "Internal server error" });
+    }
+  }
+);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
