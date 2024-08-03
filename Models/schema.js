@@ -13,6 +13,7 @@ const projectSchema = new mongoose.Schema({
   project_name: String,
   project_category: String,
   project_manager: String,
+  status: String,
   client: String,
   country: String,
   city: String,

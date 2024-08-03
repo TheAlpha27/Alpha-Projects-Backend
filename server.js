@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const { User, Project } = require("./Models/schema");
-const { UserStatus, UserTypes } = require("./constants");
+const { UserStatus, UserTypes, ProjectStatus } = require("./constants");
 const express = require("express");
 require("dotenv").config();
 const otpGenerator = require("otp-generator");
@@ -215,10 +215,13 @@ app.post("/login", async (req, res) => {
 
     return res.status(200).json({
       message: "Login successful",
-      token,
-      type: user.type,
-      email: user.email,
-      fullname: user.fullname,
+      user: {
+        token,
+        _id: user._id,
+        type: user.type,
+        email: user.email,
+        fullname: user.fullname,
+      },
     });
   } catch (error) {
     console.error("Database error:", error);
@@ -328,8 +331,16 @@ app.get("/get-users", protectRoute(UserTypes.user), async (req, res) => {
 app.post("/getUpdatedUser", protectRoute(), async (req, res) => {
   const user = req.user;
   if (user) {
-    const token = jwt.sign({ email }, jwtSecret, { expiresIn: "1h" });
-    res.status(200).json({ results: user, token });
+    const token = jwt.sign({ email: user.email }, jwtSecret, {
+      expiresIn: "1h",
+    });
+    res.status(200).json({
+      email: user.email,
+      fullname: user.fullname,
+      status: user.status,
+      type: user.type,
+      token,
+    });
   } else {
     res.status(401).json({ message: "User not found" });
   }
@@ -464,6 +475,7 @@ app.post("/addProject", protectRoute(UserTypes.user), async (req, res) => {
     project_name,
     project_category,
     project_manager,
+    status,
     client,
     country,
     city,
@@ -487,6 +499,7 @@ app.post("/addProject", protectRoute(UserTypes.user), async (req, res) => {
       project_name,
       project_category,
       project_manager,
+      status: status ?? ProjectStatus.notStarted,
       client,
       country,
       city,

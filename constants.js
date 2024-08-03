@@ -9,4 +9,10 @@ const UserStatus = {
   inactive: "Inactive",
 };
 
-module.exports = { UserTypes, UserStatus, Messages };
+const ProjectStatus = {
+  notStarted: "Not Started",
+  inProgress: "In Progress",
+  completed: "Completed",
+};
+
+module.exports = { UserTypes, UserStatus, ProjectStatus };

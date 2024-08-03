@@ -2,6 +2,8 @@ const jwt = require("jsonwebtoken");
 const { User } = require("../Models/schema");
 const { UserStatus, UserTypes } = require("../constants");
 
+const jwtSecret = process.env.JWT_SECRET;
+
 const protectRoute =
   (requiredUserType = undefined) =>
   async (req, res, next) => {
@@ -42,7 +44,7 @@ const protectRoute =
             return res.status(403).json({ message: "Action not allowed" });
           }
         }
-        
+
         req.user = user;
         next();
       } catch (error) {
