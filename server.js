@@ -512,7 +512,12 @@ app.post("/addProject", protectRoute(UserTypes.user), async (req, res) => {
     await project.save();
     res.status(200).json({ error: false, message: "Project saved" });
   } catch (error) {
-    console.error("Error:", error);
+    console.log("Error:", { error });
+    if (error.code === 11000) {
+      res
+        .status(500)
+        .json({ error: true, message: "Project name must be unique" });
+    }
     res.status(500).json({ error: true, message: "Internal server error" });
   }
 });

@@ -10,7 +10,11 @@ const userSchema = new mongoose.Schema({
 });
 
 const projectSchema = new mongoose.Schema({
-  project_name: String,
+  project_name: {
+    type: String,
+    required: true,
+    unique: true,
+  },
   project_category: String,
   project_manager: String,
   status: String,
