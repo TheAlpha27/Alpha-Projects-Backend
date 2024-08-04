@@ -484,7 +484,7 @@ app.post("/addProject", protectRoute(UserTypes.user), async (req, res) => {
 
   try {
     const response = await axios.get(
-      `https://nominatim.openstreetmap.org/search?city=${city}&country=${country}&format=json`
+      `https://geocode.maps.co/search?q=${city},${country}&api_key=${process.env.API_KEY}`
     );
 
     let lat, lon;
